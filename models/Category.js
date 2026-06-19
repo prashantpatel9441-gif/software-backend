@@ -7,14 +7,6 @@ const categorySchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    subCategories: {
-      type: [String],
-      default: [],
-    },
-    productsCount: {
-      type: Number,
-      default: 0,
-    },
     status: {
       type: String,
       enum: ['Active', 'Inactive'],

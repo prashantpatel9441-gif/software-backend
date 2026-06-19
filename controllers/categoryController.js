@@ -17,11 +17,9 @@ export const getCategories = async (req, res, next) => {
 // @access  Public
 export const createCategory = async (req, res, next) => {
   try {
-    const { name, subCategories, productsCount, status } = req.body;
+    const { name, status } = req.body;
     const category = await Category.create({
       name,
-      subCategories,
-      productsCount,
       status,
     });
     res.status(201).json(category);
@@ -39,8 +37,6 @@ export const updateCategory = async (req, res, next) => {
 
     if (category) {
       category.name = req.body.name || category.name;
-      category.subCategories = req.body.subCategories !== undefined ? req.body.subCategories : category.subCategories;
-      category.productsCount = req.body.productsCount !== undefined ? req.body.productsCount : category.productsCount;
       category.status = req.body.status || category.status;
 
       const updatedCategory = await category.save();

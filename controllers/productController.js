@@ -18,7 +18,14 @@ export const getProducts = async (req, res, next) => {
 // @access  Public
 export const createProduct = async (req, res, next) => {
   try {
-    const { name, image, category, variants, variantDetails, unit, sku, vendor, qty, wholesalePrice, retailPrice, status } = req.body;
+    let { name, image, category, variants, variantDetails, unit, sku, vendor, qty, wholesalePrice, retailPrice, status } = req.body;
+    
+    // Auto-update status based on qty
+    if (qty === 0 || qty === '0') {
+      status = 'Out of Stock';
+    } else if (status === 'Out of Stock') {
+      status = 'Active';
+    }
     const product = await Product.create({
       name,
       image,
@@ -90,7 +97,15 @@ export const updateProduct = async (req, res, next) => {
       product.qty = req.body.qty !== undefined ? req.body.qty : product.qty;
       product.wholesalePrice = req.body.wholesalePrice !== undefined ? req.body.wholesalePrice : product.wholesalePrice;
       product.retailPrice = req.body.retailPrice !== undefined ? req.body.retailPrice : product.retailPrice;
-      product.status = req.body.status || product.status;
+      product.retailPrice = req.body.retailPrice !== undefined ? req.body.retailPrice : product.retailPrice;
+      
+      let incomingStatus = req.body.status || product.status;
+      if (product.qty === 0 || product.qty === '0') {
+        incomingStatus = 'Out of Stock';
+      } else if (incomingStatus === 'Out of Stock') {
+        incomingStatus = 'Active';
+      }
+      product.status = incomingStatus;
 
       const updatedProduct = await product.save();
 
@@ -165,6 +180,64 @@ export const deleteProduct = async (req, res, next) => {
       }
 
       res.status(200).json({ message: 'Product removed' });
+    } else {
+      res.status(404);
+      throw new Error('Product not found');
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Add a variant to a product
+// @route   POST /api/products/:id/variants
+// @access  Public
+export const addVariantToProduct = async (req, res, next) => {
+  try {
+    const { variantName, sku, qty, retailPrice, wholesalePrice, image } = req.body;
+    const product = await Product.findById(req.params.id);
+
+    if (product) {
+      const newVariant = {
+        variantName,
+        sku,
+        qty: qty || 0,
+        retailPrice: retailPrice || 0,
+        wholesalePrice: wholesalePrice || 0,
+        image: image || ''
+      };
+
+      product.variantDetails.push(newVariant);
+      
+      // Update overall qty based on variants
+      product.qty = product.variantDetails.reduce((sum, v) => sum + (parseInt(v.qty) || 0), 0);
+
+      // Auto-update status based on new qty
+      if (product.qty === 0 || product.qty === '0') {
+        product.status = 'Out of Stock';
+      } else if (product.status === 'Out of Stock') {
+        product.status = 'Active';
+      }
+
+      const updatedProduct = await product.save();
+
+      // Auto-create/update inventory item for the variant
+      try {
+        await Inventory.create({
+          sku: newVariant.sku,
+          name: product.name,
+          category: product.category || 'General',
+          warehouse: 'Main WH - A1',
+          quantity: newVariant.qty,
+          unitPrice: newVariant.retailPrice,
+          status: newVariant.qty > 0 ? 'In Stock' : 'Out of Stock',
+          variant: newVariant.variantName
+        });
+      } catch (invErr) {
+        console.error('Failed to auto-create inventory item for variant:', invErr);
+      }
+
+      res.status(201).json(updatedProduct);
     } else {
       res.status(404);
       throw new Error('Product not found');

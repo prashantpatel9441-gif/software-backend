@@ -24,6 +24,7 @@ const productSchema = new mongoose.Schema(
     variantDetails: [
       {
         variantName: { type: String, required: true },
+        image: { type: String, default: '' },
         sku: { type: String, required: true },
         qty: { type: Number, default: 0 },
         retailPrice: { type: Number, default: 0 },

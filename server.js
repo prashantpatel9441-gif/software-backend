@@ -10,6 +10,8 @@ import variantRoutes from './routes/variantRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 import invoiceRoutes from './routes/invoiceRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import customerRoutes from './routes/customerRoutes.js';
+import userRoutes from './routes/userRoutes.js';
 import path from 'path';
 
 dotenv.config();
@@ -32,6 +34,8 @@ app.use('/api/variants', variantRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/users', userRoutes);
 
 const __dirname = path.resolve();
 app.use('/uploads', express.static(path.join(__dirname, '/uploads')));

@@ -1,6 +1,8 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import http from 'http';
+import https from 'https';
 import connectDB from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
 import categoryRoutes from './routes/categoryRoutes.js';
@@ -58,4 +60,18 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  
+  // Keep-alive ping to prevent Render from sleeping
+  // Render populates RENDER_EXTERNAL_URL automatically in production
+  const url = process.env.RENDER_EXTERNAL_URL;
+  if (url) {
+    setInterval(() => {
+      const client = url.startsWith('https') ? https : http;
+      client.get(url, (res) => {
+        console.log(`[Keep-Alive] Pinged ${url} to stay awake - Status: ${res.statusCode}`);
+      }).on('error', (err) => {
+        console.error(`[Keep-Alive] Ping failed: ${err.message}`);
+      });
+    }, 14 * 60 * 1000); // 14 minutes
+  }
 });

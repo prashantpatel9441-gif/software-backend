@@ -84,7 +84,9 @@ const customerSchema = new mongoose.Schema({
     default: ''
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
 const Customer = mongoose.model('Customer', customerSchema);

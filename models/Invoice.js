@@ -98,6 +98,14 @@ const invoiceSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    invoiceType: {
+      type: String,
+      trim: true,
+    },
+    documentNumber: {
+      type: String,
+      trim: true,
+    },
     notes: {
       type: String,
       trim: true,

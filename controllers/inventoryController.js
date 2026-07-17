@@ -1,13 +1,105 @@
 import Inventory from '../models/Inventory.js';
 import Product from '../models/Product.js';
 
-// @desc    Get all inventory items
+// @desc    Get all inventory items (paginated)
 // @route   GET /api/inventory
 // @access  Public
 export const getInventory = async (req, res, next) => {
   try {
-    const inventory = await Inventory.find({}).sort({ createdAt: -1 });
-    res.status(200).json(inventory);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || '';
+    const category = req.query.category || 'All';
+    const warehouse = req.query.warehouse || 'All';
+
+    let query = {};
+
+    if (search) {
+      query.$or = [
+        { sku: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } }
+      ];
+    }
+    if (category && category !== 'All') {
+      query.category = category;
+    }
+    if (warehouse && warehouse !== 'All') {
+      query.warehouse = warehouse;
+    }
+
+    const total = await Inventory.countDocuments(query);
+    const inventory = await Inventory.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    // Using aggregations for metrics
+    const metricsAgg = await Inventory.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalInventoryValue: { $sum: { $multiply: ["$quantity", "$unitPrice"] } },
+          totalItemsInStock: { $sum: "$quantity" },
+          lowStockAlerts: { 
+            $sum: { 
+              $cond: [ { $and: [ { $lt: ["$quantity", 10] }, { $gt: ["$quantity", 0] } ] }, 1, 0 ] 
+            } 
+          },
+          deadStockItems: { 
+            $sum: { $cond: [ { $eq: ["$status", "Dead Stock"] }, 1, 0 ] } 
+          }
+        }
+      }
+    ]);
+
+    const metrics = metricsAgg.length > 0 ? metricsAgg[0] : {
+      totalInventoryValue: 0,
+      totalItemsInStock: 0,
+      lowStockAlerts: 0,
+      deadStockItems: 0
+    };
+
+    const categoryStatsAgg = await Inventory.aggregate([
+      {
+        $group: {
+          _id: "$category",
+          count: { $sum: "$quantity" },
+          value: { $sum: { $multiply: ["$quantity", "$unitPrice"] } }
+        }
+      },
+      {
+        $project: {
+          name: { $cond: [ { $eq: ["$_id", ""] }, "Uncategorized", "$_id" ] },
+          count: 1,
+          value: 1,
+          _id: 0
+        }
+      },
+      { $sort: { name: 1 } }
+    ]);
+
+    const uniqueCategories = ['All', ...(await Inventory.distinct('category')).filter(Boolean)];
+    const uniqueWarehouses = ['All', ...(await Inventory.distinct('warehouse')).filter(Boolean)];
+    
+    // Low stock items for the banner
+    const lowStockItems = await Inventory.find({ quantity: { $lt: 10, $gt: 0 } }).select('sku name variant quantity');
+
+    res.status(200).json({
+      inventory,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      totalItems: total,
+      metrics: {
+        totalInventoryValue: metrics.totalInventoryValue,
+        totalItemsInStock: metrics.totalItemsInStock,
+        lowStockAlerts: metrics.lowStockAlerts,
+        deadStockItems: metrics.deadStockItems,
+        uniqueCategories,
+        uniqueWarehouses,
+        lowStockItems,
+        categoryStats: categoryStatsAgg
+      }
+    });
   } catch (error) {
     next(error);
   }
@@ -25,20 +117,33 @@ export const syncProductsToInventory = async (req, res, next) => {
       if (product.variantDetails && product.variantDetails.length > 0) {
         // Product with variantDetails — create one inventory entry per variant
         for (const vd of product.variantDetails) {
-          const existing = await Inventory.findOne({ sku: vd.sku });
+          let currentSku = vd.sku;
+          let existing = await Inventory.findOne({ sku: currentSku });
+          if (existing && existing.name !== product.name) {
+             currentSku = `${vd.sku}-${product._id.toString().slice(-4)}`;
+             existing = await Inventory.findOne({ sku: currentSku });
+          }
           if (!existing) {
             const qty = vd.qty || 0;
-            const inv = await Inventory.create({
-              sku: vd.sku,
-              name: product.name,
-              category: product.category || 'General',
-              warehouse: 'Main WH - A1',
-              quantity: qty,
-              unitPrice: vd.retailPrice || product.retailPrice || 0,
-              status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock',
-              variant: vd.variantName,
-            });
-            created.push(inv);
+            try {
+              const inv = await Inventory.create({
+                sku: currentSku,
+                name: product.name,
+                category: product.category || 'General',
+                warehouse: 'Main WH - A1',
+                quantity: qty,
+                unitPrice: vd.retailPrice || product.retailPrice || 0,
+                status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock',
+                variant: vd.variantName,
+              });
+              created.push(inv);
+            } catch (err) {
+              if (err.code === 11000) {
+                 const fallbackSku = `${currentSku}-${Math.floor(Math.random()*10000)}`;
+                 const inv = await Inventory.create({ ...err.keyValue, sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: qty, unitPrice: vd.retailPrice || product.retailPrice || 0, status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock', variant: vd.variantName });
+                 created.push(inv);
+              } else throw err;
+            }
           }
         }
       } else if (product.variants && product.variants.length > 0) {
@@ -47,39 +152,67 @@ export const syncProductsToInventory = async (req, res, next) => {
           for (const opt of vGroup.options) {
             const variantName = `${vGroup.group}: ${opt}`;
             const cleanV = variantName.replace(/[^a-zA-Z0-9]/g, '');
-            const variantSku = `${product.sku}-${cleanV}`;
-            const existing = await Inventory.findOne({ sku: variantSku });
+            let currentSku = `${product.sku}-${cleanV}`;
+            let existing = await Inventory.findOne({ sku: currentSku });
+            if (existing && existing.name !== product.name) {
+               currentSku = `${currentSku}-${product._id.toString().slice(-4)}`;
+               existing = await Inventory.findOne({ sku: currentSku });
+            }
             if (!existing) {
-              const inv = await Inventory.create({
-                sku: variantSku,
-                name: product.name,
-                category: product.category || 'General',
-                warehouse: 'Main WH - A1',
-                quantity: 0,
-                unitPrice: product.retailPrice || 0,
-                status: 'Out of Stock',
-                variant: variantName,
-              });
-              created.push(inv);
+              try {
+                const inv = await Inventory.create({
+                  sku: currentSku,
+                  name: product.name,
+                  category: product.category || 'General',
+                  warehouse: 'Main WH - A1',
+                  quantity: 0,
+                  unitPrice: product.retailPrice || 0,
+                  status: 'Out of Stock',
+                  variant: variantName,
+                });
+                created.push(inv);
+              } catch(err) {
+                if (err.code === 11000) {
+                  const fallbackSku = `${currentSku}-${Math.floor(Math.random()*10000)}`;
+                  const inv = await Inventory.create({ sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: 0, unitPrice: product.retailPrice || 0, status: 'Out of Stock', variant: variantName });
+                  created.push(inv);
+                } else throw err;
+              }
             }
           }
         }
       } else {
         // Product with no variants — create single inventory entry
-        const existing = await Inventory.findOne({ sku: product.sku });
+        let currentSku = product.sku;
+        let existing = await Inventory.findOne({ sku: currentSku });
+        
+        // If SKU exists but for a totally different product name, append a suffix to avoid uniqueness error
+        if (existing && existing.name !== product.name) {
+          currentSku = `${product.sku}-${product._id.toString().slice(-4)}`;
+          existing = await Inventory.findOne({ sku: currentSku });
+        }
+
         if (!existing) {
           const qty = product.qty || 0;
-          const inv = await Inventory.create({
-            sku: product.sku,
-            name: product.name,
-            category: product.category || 'General',
-            warehouse: 'Main WH - A1',
-            quantity: qty,
-            unitPrice: product.retailPrice || 0,
-            status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock',
-            variant: '',
-          });
-          created.push(inv);
+          try {
+            const inv = await Inventory.create({
+              sku: currentSku,
+              name: product.name,
+              category: product.category || 'General',
+              warehouse: 'Main WH - A1',
+              quantity: qty,
+              unitPrice: product.retailPrice || 0,
+              status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock',
+              variant: '',
+            });
+            created.push(inv);
+          } catch (err) {
+             if (err.code === 11000) {
+               const fallbackSku = `${currentSku}-${Math.floor(Math.random()*10000)}`;
+               const inv = await Inventory.create({ sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: qty, unitPrice: product.retailPrice || 0, status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock', variant: '' });
+               created.push(inv);
+             } else throw err;
+          }
         }
       }
     }

@@ -1,13 +1,42 @@
 import Product from '../models/Product.js';
 import Inventory from '../models/Inventory.js';
 
-// @desc    Get all products
+// @desc    Get all products (with pagination & filters)
 // @route   GET /api/products
 // @access  Public
 export const getProducts = async (req, res, next) => {
   try {
-    const products = await Product.find({}).sort({ createdAt: -1 });
-    res.status(200).json(products);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const query = {};
+
+    if (req.query.search) {
+      query.$or = [
+        { name: { $regex: req.query.search, $options: 'i' } },
+        { sku: { $regex: req.query.search, $options: 'i' } }
+      ];
+    }
+    if (req.query.category && req.query.category !== 'All' && req.query.category !== '') {
+      query.category = req.query.category;
+    }
+    if (req.query.status && req.query.status !== 'All' && req.query.status !== '') {
+      query.status = req.query.status;
+    }
+
+    const totalItems = await Product.countDocuments(query);
+    const products = await Product.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.status(200).json({
+      products,
+      currentPage: page,
+      totalPages: Math.ceil(totalItems / limit),
+      totalItems
+    });
   } catch (error) {
     next(error);
   }

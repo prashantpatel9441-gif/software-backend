@@ -53,6 +53,8 @@ export const createInvoice = async (req, res, next) => {
       amountReceived,
       paymentStatus,
       paymentMethod,
+      invoiceType,
+      documentNumber,
       notes,
     } = req.body;
 
@@ -79,6 +81,8 @@ export const createInvoice = async (req, res, next) => {
       amountReceived,
       paymentStatus,
       paymentMethod,
+      invoiceType,
+      documentNumber,
       notes,
     });
 
@@ -174,7 +178,8 @@ export const updateInvoice = async (req, res, next) => {
     // Only update fields that are provided in the request body
     const allowedFields = [
       'delivery', 'payment', 'paymentStatus', 'paymentMethod',
-      'amountReceived', 'notes', 'dueDate', 'client', 'phone', 'address'
+      'amountReceived', 'notes', 'dueDate', 'client', 'phone', 'address',
+      'invoiceType', 'documentNumber'
     ];
 
     allowedFields.forEach(field => {

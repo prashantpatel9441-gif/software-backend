@@ -29,7 +29,7 @@ export const getInventory = async (req, res, next) => {
 
     const total = await Inventory.countDocuments(query);
     const inventory = await Inventory.find(query)
-      .sort({ createdAt: -1 })
+      .sort({ srNo: 1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
 
@@ -135,12 +135,13 @@ export const syncProductsToInventory = async (req, res, next) => {
                 unitPrice: vd.retailPrice || product.retailPrice || 0,
                 status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock',
                 variant: vd.variantName,
+                srNo: product.srNo || 999999,
               });
               created.push(inv);
             } catch (err) {
               if (err.code === 11000) {
                  const fallbackSku = `${currentSku}-${Math.floor(Math.random()*10000)}`;
-                 const inv = await Inventory.create({ ...err.keyValue, sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: qty, unitPrice: vd.retailPrice || product.retailPrice || 0, status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock', variant: vd.variantName });
+                 const inv = await Inventory.create({ ...err.keyValue, sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: qty, unitPrice: vd.retailPrice || product.retailPrice || 0, status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock', variant: vd.variantName, srNo: product.srNo || 999999 });
                  created.push(inv);
               } else throw err;
             }
@@ -169,12 +170,13 @@ export const syncProductsToInventory = async (req, res, next) => {
                   unitPrice: product.retailPrice || 0,
                   status: 'Out of Stock',
                   variant: variantName,
+                  srNo: product.srNo || 999999,
                 });
                 created.push(inv);
               } catch(err) {
                 if (err.code === 11000) {
                   const fallbackSku = `${currentSku}-${Math.floor(Math.random()*10000)}`;
-                  const inv = await Inventory.create({ sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: 0, unitPrice: product.retailPrice || 0, status: 'Out of Stock', variant: variantName });
+                  const inv = await Inventory.create({ sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: 0, unitPrice: product.retailPrice || 0, status: 'Out of Stock', variant: variantName, srNo: product.srNo || 999999 });
                   created.push(inv);
                 } else throw err;
               }
@@ -204,12 +206,13 @@ export const syncProductsToInventory = async (req, res, next) => {
               unitPrice: product.retailPrice || 0,
               status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock',
               variant: '',
+              srNo: product.srNo || 999999,
             });
             created.push(inv);
           } catch (err) {
              if (err.code === 11000) {
                const fallbackSku = `${currentSku}-${Math.floor(Math.random()*10000)}`;
-               const inv = await Inventory.create({ sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: qty, unitPrice: product.retailPrice || 0, status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock', variant: '' });
+               const inv = await Inventory.create({ sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: qty, unitPrice: product.retailPrice || 0, status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock', variant: '', srNo: product.srNo || 999999 });
                created.push(inv);
              } else throw err;
           }

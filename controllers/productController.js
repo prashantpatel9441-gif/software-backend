@@ -27,7 +27,7 @@ export const getProducts = async (req, res, next) => {
 
     const totalItems = await Product.countDocuments(query);
     const products = await Product.find(query)
-      .sort({ createdAt: -1 })
+      .sort({ srNo: 1, createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
@@ -47,7 +47,7 @@ export const getProducts = async (req, res, next) => {
 // @access  Public
 export const createProduct = async (req, res, next) => {
   try {
-    let { name, image, category, variants, variantDetails, unit, sku, vendor, qty, wholesalePrice, retailPrice, status } = req.body;
+    let { name, image, category, variants, variantDetails, unit, sku, vendor, qty, wholesalePrice, retailPrice, status, srNo } = req.body;
     
     // Auto-update status based on qty
     if (qty === 0 || qty === '0') {
@@ -55,6 +55,15 @@ export const createProduct = async (req, res, next) => {
     } else if (status === 'Out of Stock') {
       status = 'Active';
     }
+    // Check if srNo is unique
+    if (srNo && srNo !== 999999) {
+      const existingProduct = await Product.findOne({ srNo });
+      if (existingProduct) {
+        res.status(400);
+        throw new Error(`Serial Number ${srNo} is already in use by product: ${existingProduct.name}`);
+      }
+    }
+
     const product = await Product.create({
       name,
       image,
@@ -68,6 +77,7 @@ export const createProduct = async (req, res, next) => {
       wholesalePrice,
       retailPrice,
       status,
+      srNo,
     });
 
     // Auto-create initial inventory items
@@ -125,8 +135,17 @@ export const updateProduct = async (req, res, next) => {
       product.vendor = req.body.vendor || product.vendor;
       product.qty = req.body.qty !== undefined ? req.body.qty : product.qty;
       product.wholesalePrice = req.body.wholesalePrice !== undefined ? req.body.wholesalePrice : product.wholesalePrice;
+      if (req.body.srNo !== undefined && req.body.srNo !== 999999 && req.body.srNo !== product.srNo) {
+        const existingProduct = await Product.findOne({ srNo: req.body.srNo, _id: { $ne: product._id } });
+        if (existingProduct) {
+          res.status(400);
+          throw new Error(`Serial Number ${req.body.srNo} is already in use by product: ${existingProduct.name}`);
+        }
+      }
+
       product.retailPrice = req.body.retailPrice !== undefined ? req.body.retailPrice : product.retailPrice;
       product.retailPrice = req.body.retailPrice !== undefined ? req.body.retailPrice : product.retailPrice;
+      product.srNo = req.body.srNo !== undefined ? req.body.srNo : product.srNo;
       
       let incomingStatus = req.body.status || product.status;
       if (product.qty === 0 || product.qty === '0') {

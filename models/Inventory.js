@@ -41,6 +41,10 @@ const inventorySchema = new mongoose.Schema(
       enum: ['In Stock', 'Low Stock', 'Out of Stock', 'Dead Stock'],
       default: 'In Stock',
     },
+    srNo: {
+      type: Number,
+      default: 999999,
+    },
   },
   {
     timestamps: true,

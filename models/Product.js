@@ -62,6 +62,10 @@ const productSchema = new mongoose.Schema(
       enum: ['Active', 'Out of Stock', 'Inactive'],
       default: 'Active',
     },
+    srNo: {
+      type: Number,
+      default: 999999,
+    },
   },
   {
     timestamps: true,

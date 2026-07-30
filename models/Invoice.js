@@ -13,6 +13,22 @@ const invoiceItemSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  height: {
+    type: Number,
+    default: 0,
+  },
+  width: {
+    type: Number,
+    default: 0,
+  },
+  sqftPerPcs: {
+    type: Number,
+    default: 0,
+  },
+  totalSqft: {
+    type: Number,
+    default: 0,
+  },
   price: {
     type: Number,
     required: true,
@@ -30,6 +46,7 @@ const invoiceItemSchema = new mongoose.Schema({
     required: true,
   },
 });
+
 
 const invoiceSchema = new mongoose.Schema(
   {

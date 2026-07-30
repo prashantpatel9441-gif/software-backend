@@ -29,8 +29,12 @@ const productSchema = new mongoose.Schema(
         qty: { type: Number, default: 0 },
         retailPrice: { type: Number, default: 0 },
         wholesalePrice: { type: Number, default: 0 },
+        height: { type: Number, default: 0 },
+        width: { type: Number, default: 0 },
+        sqftPerPcs: { type: Number, default: 0 },
       }
     ],
+
     unit: {
       type: String,
       default: 'Pcs',
@@ -57,6 +61,18 @@ const productSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    height: {
+      type: Number,
+      default: 0,
+    },
+    width: {
+      type: Number,
+      default: 0,
+    },
+    sqftPerPcs: {
+      type: Number,
+      default: 0,
+    },
     status: {
       type: String,
       enum: ['Active', 'Out of Stock', 'Inactive'],
@@ -67,6 +83,7 @@ const productSchema = new mongoose.Schema(
       default: 999999,
     },
   },
+
   {
     timestamps: true,
   }

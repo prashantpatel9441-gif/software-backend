@@ -9,6 +9,9 @@ const companySettingsSchema = new mongoose.Schema(
     email: { type: String, default: '' },
     gstNumber: { type: String, default: '' },
     logo: { type: String, default: '' },
+    bankName: { type: String, default: '' },
+    accountNumber: { type: String, default: '' },
+    branchIfsc: { type: String, default: '' },
     termsAndConditions: { type: String, default: '' },
     notes: { type: String, default: '' },
   },
@@ -17,3 +20,4 @@ const companySettingsSchema = new mongoose.Schema(
 
 const CompanySettings = mongoose.model('CompanySettings', companySettingsSchema);
 export default CompanySettings;
+

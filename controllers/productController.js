@@ -47,8 +47,12 @@ export const getProducts = async (req, res, next) => {
 // @access  Public
 export const createProduct = async (req, res, next) => {
   try {
-    let { name, image, category, variants, variantDetails, unit, sku, vendor, qty, wholesalePrice, retailPrice, status, srNo } = req.body;
+    let { name, image, category, variants, variantDetails, unit, sku, vendor, qty, wholesalePrice, retailPrice, status, srNo, height, width, sqftPerPcs } = req.body;
     
+    const h = parseFloat(height) || 0;
+    const w = parseFloat(width) || 0;
+    const computedSqft = (h > 0 && w > 0) ? (h * w) / 144 : (parseFloat(sqftPerPcs) || 0);
+
     // Auto-update status based on qty
     if (qty === 0 || qty === '0') {
       status = 'Out of Stock';
@@ -76,6 +80,9 @@ export const createProduct = async (req, res, next) => {
       qty,
       wholesalePrice,
       retailPrice,
+      height: h,
+      width: w,
+      sqftPerPcs: computedSqft,
       status,
       srNo,
     });
@@ -135,6 +142,13 @@ export const updateProduct = async (req, res, next) => {
       product.vendor = req.body.vendor || product.vendor;
       product.qty = req.body.qty !== undefined ? req.body.qty : product.qty;
       product.wholesalePrice = req.body.wholesalePrice !== undefined ? req.body.wholesalePrice : product.wholesalePrice;
+      product.height = req.body.height !== undefined ? parseFloat(req.body.height) || 0 : product.height;
+      product.width = req.body.width !== undefined ? parseFloat(req.body.width) || 0 : product.width;
+      if (product.height > 0 && product.width > 0) {
+        product.sqftPerPcs = (product.height * product.width) / 144;
+      } else if (req.body.sqftPerPcs !== undefined) {
+        product.sqftPerPcs = parseFloat(req.body.sqftPerPcs) || 0;
+      }
       if (req.body.srNo !== undefined && req.body.srNo !== 999999 && req.body.srNo !== product.srNo) {
         const existingProduct = await Product.findOne({ srNo: req.body.srNo, _id: { $ne: product._id } });
         if (existingProduct) {
@@ -144,8 +158,8 @@ export const updateProduct = async (req, res, next) => {
       }
 
       product.retailPrice = req.body.retailPrice !== undefined ? req.body.retailPrice : product.retailPrice;
-      product.retailPrice = req.body.retailPrice !== undefined ? req.body.retailPrice : product.retailPrice;
       product.srNo = req.body.srNo !== undefined ? req.body.srNo : product.srNo;
+
       
       let incomingStatus = req.body.status || product.status;
       if (product.qty === 0 || product.qty === '0') {
@@ -242,20 +256,28 @@ export const deleteProduct = async (req, res, next) => {
 // @access  Public
 export const addVariantToProduct = async (req, res, next) => {
   try {
-    const { variantName, sku, qty, retailPrice, wholesalePrice, image } = req.body;
+    const { variantName, sku, qty, retailPrice, wholesalePrice, image, height, width, sqftPerPcs } = req.body;
     const product = await Product.findById(req.params.id);
 
     if (product) {
+      const h = parseFloat(height) || 0;
+      const w = parseFloat(width) || 0;
+      const sq = (h > 0 && w > 0) ? (h * w) / 144 : (parseFloat(sqftPerPcs) || 0);
+
       const newVariant = {
         variantName,
         sku,
         qty: qty || 0,
         retailPrice: retailPrice || 0,
         wholesalePrice: wholesalePrice || 0,
+        height: h,
+        width: w,
+        sqftPerPcs: sq,
         image: image || ''
       };
 
       product.variantDetails.push(newVariant);
+
       
       // Update overall qty based on variants
       product.qty = product.variantDetails.reduce((sum, v) => sum + (parseInt(v.qty) || 0), 0);

@@ -29,6 +29,8 @@ export const updateSettings = async (req, res) => {
       settings.state = req.body.state !== undefined ? req.body.state : settings.state;
       settings.telephone = req.body.telephone !== undefined ? req.body.telephone : settings.telephone;
       settings.email = req.body.email !== undefined ? req.body.email : settings.email;
+      settings.gstNumber = req.body.gstNumber !== undefined ? req.body.gstNumber : settings.gstNumber;
+      settings.logo = req.body.logo !== undefined ? req.body.logo : settings.logo;
       settings.bankName = req.body.bankName !== undefined ? req.body.bankName : settings.bankName;
       settings.accountNumber = req.body.accountNumber !== undefined ? req.body.accountNumber : settings.accountNumber;
       settings.branchIfsc = req.body.branchIfsc !== undefined ? req.body.branchIfsc : settings.branchIfsc;
@@ -45,3 +47,4 @@ export const updateSettings = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+

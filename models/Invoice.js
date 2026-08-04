@@ -9,6 +9,10 @@ const invoiceItemSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
+  unit: {
+    type: String,
+    default: 'Pcs',
+  },
   qty: {
     type: Number,
     required: true,
@@ -26,6 +30,10 @@ const invoiceItemSchema = new mongoose.Schema({
     default: 0,
   },
   totalSqft: {
+    type: Number,
+    default: 0,
+  },
+  pricePerSqft: {
     type: Number,
     default: 0,
   },
@@ -96,6 +104,14 @@ const invoiceSchema = new mongoose.Schema(
       default: 0,
     },
     tax: {
+      type: Number,
+      default: 0,
+    },
+    otherCharge: {
+      type: Number,
+      default: 0,
+    },
+    roundOff: {
       type: Number,
       default: 0,
     },

@@ -21,6 +21,11 @@ const userSchema = new mongoose.Schema(
       enum: ['Admin', 'Editor', 'User'],
       default: 'User',
     },
+    status: {
+      type: String,
+      enum: ['Active', 'Inactive'],
+      default: 'Active',
+    },
   },
   {
     timestamps: true,
@@ -35,7 +40,7 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 // Middleware to hash password before saving
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) {
-    next();
+    return next();
   }
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);

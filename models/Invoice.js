@@ -119,6 +119,14 @@ const invoiceSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    previousBalance: {
+      type: Number,
+      default: 0,
+    },
+    netPayable: {
+      type: Number,
+      default: 0,
+    },
     amountReceived: {
       type: Number,
       default: 0,

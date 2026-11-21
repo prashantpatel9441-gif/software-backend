@@ -6,18 +6,19 @@ import Product from '../models/Product.js';
 // @access  Public
 export const getInventory = async (req, res, next) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const search = req.query.search || '';
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.max(1, Math.min(1000, parseInt(req.query.limit) || 10));
+    const search = req.query.search ? String(req.query.search).trim() : '';
     const category = req.query.category || 'All';
     const warehouse = req.query.warehouse || 'All';
 
     let query = {};
 
     if (search) {
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query.$or = [
-        { sku: { $regex: search, $options: 'i' } },
-        { name: { $regex: search, $options: 'i' } }
+        { sku: { $regex: escaped, $options: 'i' } },
+        { name: { $regex: escaped, $options: 'i' } }
       ];
     }
     if (category && category !== 'All') {
@@ -86,7 +87,7 @@ export const getInventory = async (req, res, next) => {
 
     res.status(200).json({
       inventory,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / limit) || 1,
       currentPage: page,
       totalItems: total,
       metrics: {
@@ -124,7 +125,7 @@ export const syncProductsToInventory = async (req, res, next) => {
              existing = await Inventory.findOne({ sku: currentSku });
           }
           if (!existing) {
-            const qty = vd.qty || 0;
+            const qty = parseInt(vd.qty) || 0;
             try {
               const inv = await Inventory.create({
                 sku: currentSku,
@@ -132,7 +133,7 @@ export const syncProductsToInventory = async (req, res, next) => {
                 category: product.category || 'General',
                 warehouse: 'Main WH - A1',
                 quantity: qty,
-                unitPrice: vd.retailPrice || product.retailPrice || 0,
+                unitPrice: parseFloat(vd.retailPrice) || parseFloat(product.retailPrice) || 0,
                 status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock',
                 variant: vd.variantName,
                 srNo: product.srNo || 999999,
@@ -140,45 +141,21 @@ export const syncProductsToInventory = async (req, res, next) => {
               created.push(inv);
             } catch (err) {
               if (err.code === 11000) {
-                 const fallbackSku = `${currentSku}-${Math.floor(Math.random()*10000)}`;
-                 const inv = await Inventory.create({ ...err.keyValue, sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: qty, unitPrice: vd.retailPrice || product.retailPrice || 0, status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock', variant: vd.variantName, srNo: product.srNo || 999999 });
-                 created.push(inv);
-              } else throw err;
-            }
-          }
-        }
-      } else if (product.variants && product.variants.length > 0) {
-        // Product with legacy variants (group/options format)
-        for (const vGroup of product.variants) {
-          for (const opt of vGroup.options) {
-            const variantName = `${vGroup.group}: ${opt}`;
-            const cleanV = variantName.replace(/[^a-zA-Z0-9]/g, '');
-            let currentSku = `${product.sku}-${cleanV}`;
-            let existing = await Inventory.findOne({ sku: currentSku });
-            if (existing && existing.name !== product.name) {
-               currentSku = `${currentSku}-${product._id.toString().slice(-4)}`;
-               existing = await Inventory.findOne({ sku: currentSku });
-            }
-            if (!existing) {
-              try {
+                const fallbackSku = `${currentSku}-${Math.floor(Math.random() * 10000)}`;
                 const inv = await Inventory.create({
-                  sku: currentSku,
+                  sku: fallbackSku,
                   name: product.name,
                   category: product.category || 'General',
                   warehouse: 'Main WH - A1',
-                  quantity: 0,
-                  unitPrice: product.retailPrice || 0,
-                  status: 'Out of Stock',
-                  variant: variantName,
+                  quantity: qty,
+                  unitPrice: parseFloat(vd.retailPrice) || parseFloat(product.retailPrice) || 0,
+                  status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock',
+                  variant: vd.variantName,
                   srNo: product.srNo || 999999,
                 });
                 created.push(inv);
-              } catch(err) {
-                if (err.code === 11000) {
-                  const fallbackSku = `${currentSku}-${Math.floor(Math.random()*10000)}`;
-                  const inv = await Inventory.create({ sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: 0, unitPrice: product.retailPrice || 0, status: 'Out of Stock', variant: variantName, srNo: product.srNo || 999999 });
-                  created.push(inv);
-                } else throw err;
+              } else {
+                throw err;
               }
             }
           }
@@ -188,14 +165,13 @@ export const syncProductsToInventory = async (req, res, next) => {
         let currentSku = product.sku;
         let existing = await Inventory.findOne({ sku: currentSku });
         
-        // If SKU exists but for a totally different product name, append a suffix to avoid uniqueness error
         if (existing && existing.name !== product.name) {
           currentSku = `${product.sku}-${product._id.toString().slice(-4)}`;
           existing = await Inventory.findOne({ sku: currentSku });
         }
 
         if (!existing) {
-          const qty = product.qty || 0;
+          const qty = parseInt(product.qty) || 0;
           try {
             const inv = await Inventory.create({
               sku: currentSku,
@@ -203,18 +179,30 @@ export const syncProductsToInventory = async (req, res, next) => {
               category: product.category || 'General',
               warehouse: 'Main WH - A1',
               quantity: qty,
-              unitPrice: product.retailPrice || 0,
+              unitPrice: parseFloat(product.retailPrice) || 0,
               status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock',
               variant: '',
               srNo: product.srNo || 999999,
             });
             created.push(inv);
           } catch (err) {
-             if (err.code === 11000) {
-               const fallbackSku = `${currentSku}-${Math.floor(Math.random()*10000)}`;
-               const inv = await Inventory.create({ sku: fallbackSku, name: product.name, category: product.category || 'General', warehouse: 'Main WH - A1', quantity: qty, unitPrice: product.retailPrice || 0, status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock', variant: '', srNo: product.srNo || 999999 });
-               created.push(inv);
-             } else throw err;
+            if (err.code === 11000) {
+              const fallbackSku = `${currentSku}-${Math.floor(Math.random() * 10000)}`;
+              const inv = await Inventory.create({
+                sku: fallbackSku,
+                name: product.name,
+                category: product.category || 'General',
+                warehouse: 'Main WH - A1',
+                quantity: qty,
+                unitPrice: parseFloat(product.retailPrice) || 0,
+                status: qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock',
+                variant: '',
+                srNo: product.srNo || 999999,
+              });
+              created.push(inv);
+            } else {
+              throw err;
+            }
           }
         }
       }
@@ -233,27 +221,54 @@ export const createInventoryItem = async (req, res, next) => {
   try {
     const { sku, name, category, warehouse, quantity, unitPrice, status, variant } = req.body;
 
-    const exists = await Inventory.findOne({ sku });
-    if (exists) {
+    if (!sku || !sku.trim()) {
       res.status(400);
-      throw new Error('An item with this SKU already exists');
+      throw new Error('SKU is required');
     }
 
+    if (!name || !name.trim()) {
+      res.status(400);
+      throw new Error('Name is required');
+    }
+
+    const cleanSku = sku.trim();
+    const exists = await Inventory.findOne({ sku: cleanSku });
+    if (exists) {
+      res.status(400);
+      throw new Error(`An inventory item with SKU "${cleanSku}" already exists`);
+    }
+
+    const qty = parseInt(quantity) || 0;
+    const computedStatus = status || (qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock');
+
     const item = await Inventory.create({
-      sku,
-      name,
-      category,
-      variant,
-      warehouse,
-      quantity,
-      unitPrice,
-      status,
+      sku: cleanSku,
+      name: name.trim(),
+      category: category ? category.trim() : 'General',
+      variant: variant ? variant.trim() : '',
+      warehouse: warehouse ? warehouse.trim() : 'Main WH - A1',
+      quantity: qty,
+      unitPrice: parseFloat(unitPrice) || 0,
+      status: computedStatus,
     });
 
-    // Also increment the base Product quantity if product exists by SKU
-    const product = await Product.findOne({ sku });
+    // Also update matching Product if exists by SKU or variantDetails.sku
+    const product = await Product.findOne({
+      $or: [{ sku: cleanSku }, { 'variantDetails.sku': cleanSku }]
+    });
+
     if (product) {
-      product.qty += Number(quantity);
+      if (product.variantDetails && product.variantDetails.length > 0) {
+        const vd = product.variantDetails.find(v => v.sku.toLowerCase() === cleanSku.toLowerCase());
+        if (vd) {
+          vd.qty = qty;
+        }
+        product.qty = product.variantDetails.reduce((sum, v) => sum + (parseInt(v.qty) || 0), 0);
+      } else {
+        product.qty += qty;
+      }
+      if (product.qty <= 0) product.status = 'Out of Stock';
+      else if (product.status === 'Out of Stock') product.status = 'Active';
       await product.save();
     }
 
@@ -268,37 +283,56 @@ export const createInventoryItem = async (req, res, next) => {
 // @access  Public
 export const createBulkInventoryItems = async (req, res, next) => {
   try {
-    const { items } = req.body;
+    const rawItems = req.body.items || req.body;
+    if (!Array.isArray(rawItems) || rawItems.length === 0) {
+      res.status(400);
+      throw new Error('Request body must contain an array of items');
+    }
+
     const baseSkuSet = new Set();
     const updatedItems = [];
 
-    for (const itemData of items) {
+    for (const itemData of rawItems) {
+      if (!itemData || !itemData.sku) continue;
+
       const { sku, baseSku, name, category, warehouse, quantity, unitPrice, status, variant } = itemData;
-      const existing = await Inventory.findOne({ sku });
+      const cleanSku = sku.trim();
+      const qty = parseInt(quantity) || 0;
+      const existing = await Inventory.findOne({ sku: cleanSku });
+
       if (existing) {
         if (baseSku) baseSkuSet.add(baseSku);
-        existing.quantity = Number(quantity);
-        existing.status = status;
+        existing.quantity = qty;
+        existing.status = status || (qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock');
         existing.warehouse = warehouse || existing.warehouse;
-        existing.unitPrice = unitPrice !== undefined ? unitPrice : existing.unitPrice;
+        existing.unitPrice = unitPrice !== undefined ? (parseFloat(unitPrice) || 0) : existing.unitPrice;
         await existing.save();
         updatedItems.push(existing);
       } else {
         if (baseSku) baseSkuSet.add(baseSku);
         const newItem = await Inventory.create({
-          sku, baseSku, name, category, variant, warehouse,
-          quantity: Number(quantity), unitPrice, status,
+          sku: cleanSku,
+          name: name ? name.trim() : 'Unnamed Item',
+          category: category ? category.trim() : 'General',
+          variant: variant ? variant.trim() : '',
+          warehouse: warehouse ? warehouse.trim() : 'Main WH - A1',
+          quantity: qty,
+          unitPrice: parseFloat(unitPrice) || 0,
+          status: status || (qty > 10 ? 'In Stock' : qty > 0 ? 'Low Stock' : 'Out of Stock'),
         });
         updatedItems.push(newItem);
       }
     }
 
+    // Sync base products if baseSkuSet was populated
     for (const bSku of baseSkuSet) {
-      const allInventoryForProduct = await Inventory.find({ baseSku: bSku });
-      const newTotalQty = allInventoryForProduct.reduce((sum, inv) => sum + inv.quantity, 0);
+      const allInventoryForProduct = await Inventory.find({ sku: { $regex: new RegExp(`^${bSku}`, 'i') } });
+      const newTotalQty = allInventoryForProduct.reduce((sum, inv) => sum + (inv.quantity || 0), 0);
       const product = await Product.findOne({ sku: bSku });
       if (product) {
         product.qty = newTotalQty;
+        if (product.qty <= 0) product.status = 'Out of Stock';
+        else if (product.status === 'Out of Stock') product.status = 'Active';
         await product.save();
       }
     }
@@ -316,32 +350,55 @@ export const updateInventoryItem = async (req, res, next) => {
   try {
     const item = await Inventory.findOne({ sku: req.params.sku });
 
-    if (item) {
-      const diff = (req.body.quantity !== undefined ? Number(req.body.quantity) : item.quantity) - item.quantity;
-
-      item.name = req.body.name || item.name;
-      item.category = req.body.category || item.category;
-      item.variant = req.body.variant !== undefined ? req.body.variant : item.variant;
-      item.warehouse = req.body.warehouse || item.warehouse;
-      item.quantity = req.body.quantity !== undefined ? req.body.quantity : item.quantity;
-      item.unitPrice = req.body.unitPrice !== undefined ? req.body.unitPrice : item.unitPrice;
-      item.status = req.body.status || item.status;
-
-      const updatedItem = await item.save();
-
-      if (diff !== 0) {
-        const product = await Product.findOne({ sku: item.sku });
-        if (product) {
-          product.qty += diff;
-          await product.save();
-        }
-      }
-
-      res.status(200).json(updatedItem);
-    } else {
+    if (!item) {
       res.status(404);
-      throw new Error('Inventory item not found');
+      throw new Error(`Inventory item with SKU "${req.params.sku}" not found`);
     }
+
+    const oldQty = item.quantity;
+    const newQty = req.body.quantity !== undefined ? (parseInt(req.body.quantity) || 0) : oldQty;
+    const diff = newQty - oldQty;
+
+    item.name = req.body.name ? req.body.name.trim() : item.name;
+    item.category = req.body.category ? req.body.category.trim() : item.category;
+    item.variant = req.body.variant !== undefined ? req.body.variant.trim() : item.variant;
+    item.warehouse = req.body.warehouse ? req.body.warehouse.trim() : item.warehouse;
+    item.quantity = newQty;
+    item.unitPrice = req.body.unitPrice !== undefined ? (parseFloat(req.body.unitPrice) || 0) : item.unitPrice;
+
+    // Auto-update status if not explicitly given or if quantity changed
+    if (req.body.status) {
+      item.status = req.body.status;
+    } else {
+      item.status = newQty > 10 ? 'In Stock' : newQty > 0 ? 'Low Stock' : 'Out of Stock';
+    }
+
+    const updatedItem = await item.save();
+
+    // Sync product qty
+    if (diff !== 0) {
+      const product = await Product.findOne({
+        $or: [{ sku: item.sku }, { 'variantDetails.sku': item.sku }]
+      });
+
+      if (product) {
+        if (product.variantDetails && product.variantDetails.length > 0) {
+          const vd = product.variantDetails.find(v => v.sku.toLowerCase() === item.sku.toLowerCase());
+          if (vd) {
+            vd.qty = newQty;
+          }
+          product.qty = product.variantDetails.reduce((sum, v) => sum + (parseInt(v.qty) || 0), 0);
+        } else {
+          product.qty = Math.max(0, product.qty + diff);
+        }
+
+        if (product.qty <= 0) product.status = 'Out of Stock';
+        else if (product.status === 'Out of Stock') product.status = 'Active';
+        await product.save();
+      }
+    }
+
+    res.status(200).json(updatedItem);
   } catch (error) {
     next(error);
   }
@@ -354,13 +411,13 @@ export const deleteInventoryItem = async (req, res, next) => {
   try {
     const item = await Inventory.findOne({ sku: req.params.sku });
 
-    if (item) {
-      await Inventory.deleteOne({ sku: req.params.sku });
-      res.status(200).json({ message: 'Inventory item removed' });
-    } else {
+    if (!item) {
       res.status(404);
-      throw new Error('Inventory item not found');
+      throw new Error(`Inventory item with SKU "${req.params.sku}" not found`);
     }
+
+    await Inventory.deleteOne({ sku: req.params.sku });
+    res.status(200).json({ message: 'Inventory item removed' });
   } catch (error) {
     next(error);
   }

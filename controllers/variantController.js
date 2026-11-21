@@ -1,4 +1,5 @@
 import Variant from '../models/Variant.js';
+import mongoose from 'mongoose';
 
 // @desc    Get all variants
 // @route   GET /api/variants
@@ -18,9 +19,28 @@ export const getVariants = async (req, res, next) => {
 export const createVariant = async (req, res, next) => {
   try {
     const { name, options } = req.body;
+    const trimmedName = name ? name.trim() : '';
+
+    if (!trimmedName) {
+      res.status(400);
+      throw new Error('Variant group name is required');
+    }
+
+    const existing = await Variant.findOne({
+      name: { $regex: new RegExp(`^${trimmedName}$`, 'i') }
+    });
+    if (existing) {
+      res.status(400);
+      throw new Error(`Variant "${trimmedName}" already exists`);
+    }
+
+    const cleanOptions = Array.isArray(options)
+      ? options.map(o => (typeof o === 'string' ? o.trim() : String(o))).filter(Boolean)
+      : [];
+
     const variant = await Variant.create({
-      name,
-      options,
+      name: trimmedName,
+      options: cleanOptions,
     });
     res.status(201).json(variant);
   } catch (error) {
@@ -33,11 +53,34 @@ export const createVariant = async (req, res, next) => {
 // @access  Public
 export const updateVariant = async (req, res, next) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      res.status(400);
+      throw new Error('Invalid variant ID format');
+    }
+
     const variant = await Variant.findById(req.params.id);
 
     if (variant) {
-      variant.name = req.body.name || variant.name;
-      variant.options = req.body.options !== undefined ? req.body.options : variant.options;
+      if (req.body.name) {
+        const trimmedName = req.body.name.trim();
+        if (trimmedName.toLowerCase() !== variant.name.toLowerCase()) {
+          const duplicate = await Variant.findOne({
+            name: { $regex: new RegExp(`^${trimmedName}$`, 'i') },
+            _id: { $ne: variant._id }
+          });
+          if (duplicate) {
+            res.status(400);
+            throw new Error(`Variant "${trimmedName}" already exists`);
+          }
+        }
+        variant.name = trimmedName;
+      }
+
+      if (req.body.options !== undefined) {
+        variant.options = Array.isArray(req.body.options)
+          ? req.body.options.map(o => (typeof o === 'string' ? o.trim() : String(o))).filter(Boolean)
+          : variant.options;
+      }
 
       const updatedVariant = await variant.save();
       res.status(200).json(updatedVariant);
@@ -55,6 +98,11 @@ export const updateVariant = async (req, res, next) => {
 // @access  Public
 export const deleteVariant = async (req, res, next) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      res.status(400);
+      throw new Error('Invalid variant ID format');
+    }
+
     const variant = await Variant.findById(req.params.id);
 
     if (variant) {

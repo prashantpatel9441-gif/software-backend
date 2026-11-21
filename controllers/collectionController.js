@@ -1,4 +1,5 @@
 import Collection from '../models/Collection.js';
+import mongoose from 'mongoose';
 
 // @desc    Get all collections
 // @route   GET /api/collections
@@ -18,11 +19,26 @@ export const getCollections = async (req, res, next) => {
 export const createCollection = async (req, res, next) => {
   try {
     const { name, description, status, theme } = req.body;
+    const trimmedName = name ? name.trim() : '';
+
+    if (!trimmedName) {
+      res.status(400);
+      throw new Error('Collection name is required');
+    }
+
+    const existing = await Collection.findOne({
+      name: { $regex: new RegExp(`^${trimmedName}$`, 'i') }
+    });
+    if (existing) {
+      res.status(400);
+      throw new Error(`Collection "${trimmedName}" already exists`);
+    }
+
     const collection = await Collection.create({
-      name,
-      description,
-      status,
-      theme,
+      name: trimmedName,
+      description: description ? description.trim() : '',
+      status: status || 'Active',
+      theme: theme || 'pink',
     });
     res.status(201).json(collection);
   } catch (error) {
@@ -35,10 +51,29 @@ export const createCollection = async (req, res, next) => {
 // @access  Public
 export const updateCollection = async (req, res, next) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      res.status(400);
+      throw new Error('Invalid collection ID format');
+    }
+
     const collection = await Collection.findById(req.params.id);
 
     if (collection) {
-      collection.name = req.body.name || collection.name;
+      if (req.body.name) {
+        const trimmedName = req.body.name.trim();
+        if (trimmedName.toLowerCase() !== collection.name.toLowerCase()) {
+          const duplicate = await Collection.findOne({
+            name: { $regex: new RegExp(`^${trimmedName}$`, 'i') },
+            _id: { $ne: collection._id }
+          });
+          if (duplicate) {
+            res.status(400);
+            throw new Error(`Collection "${trimmedName}" already exists`);
+          }
+        }
+        collection.name = trimmedName;
+      }
+
       collection.description = req.body.description !== undefined ? req.body.description : collection.description;
       collection.status = req.body.status || collection.status;
       collection.theme = req.body.theme || collection.theme;
@@ -59,6 +94,11 @@ export const updateCollection = async (req, res, next) => {
 // @access  Public
 export const deleteCollection = async (req, res, next) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      res.status(400);
+      throw new Error('Invalid collection ID format');
+    }
+
     const collection = await Collection.findById(req.params.id);
 
     if (collection) {

@@ -14,8 +14,13 @@ const generateToken = (id) => {
 export const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Please provide email and password' });
+  }
+
   try {
-    const user = await User.findOne({ email });
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: cleanEmail });
 
     if (user && (await user.matchPassword(password))) {
       res.json({
@@ -23,6 +28,7 @@ export const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        status: user.status || 'Active',
         token: generateToken(user._id),
       });
     } else {
@@ -39,18 +45,24 @@ export const loginUser = async (req, res) => {
 export const registerUser = async (req, res) => {
   const { name, email, password, role } = req.body;
 
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: 'Please provide name, email, and password' });
+  }
+
   try {
-    const userExists = await User.findOne({ email });
+    const cleanEmail = email.trim().toLowerCase();
+    const userExists = await User.findOne({ email: cleanEmail });
 
     if (userExists) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
     const user = await User.create({
-      name,
-      email,
+      name: name.trim(),
+      email: cleanEmail,
       password,
       role: role || 'User',
+      status: 'Active',
     });
 
     if (user) {
@@ -59,6 +71,7 @@ export const registerUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        status: user.status,
         token: generateToken(user._id),
       });
     } else {

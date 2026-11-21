@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import mongoose from 'mongoose';
 
 // @desc    Get all users
 // @route   GET /api/users
@@ -6,10 +7,9 @@ import User from '../models/User.js';
 export const getUsers = async (req, res) => {
   try {
     const users = await User.find({}).select('-password');
-    // Map to include status to match frontend (mocking status since schema doesn't have it natively, or default to Active)
     const formattedUsers = users.map(user => ({
       ...user._doc,
-      status: 'Active' // Hardcoding status as active for now, since User model doesn't have a status field
+      status: user.status || 'Active'
     }));
     res.json(formattedUsers);
   } catch (error) {
@@ -22,18 +22,24 @@ export const getUsers = async (req, res) => {
 // @access  Private/Admin
 export const createUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, status } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Name, email, and password are required' });
+    }
     
-    const userExists = await User.findOne({ email });
+    const cleanEmail = email.trim().toLowerCase();
+    const userExists = await User.findOne({ email: cleanEmail });
     if (userExists) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(400).json({ message: 'User already exists with this email' });
     }
 
     const user = await User.create({
-      name,
-      email,
+      name: name.trim(),
+      email: cleanEmail,
       password,
-      role: role || 'Editor'
+      role: role || 'Editor',
+      status: status || 'Active'
     });
 
     if (user) {
@@ -42,7 +48,7 @@ export const createUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        status: 'Active'
+        status: user.status || 'Active'
       });
     } else {
       res.status(400).json({ message: 'Invalid user data' });
@@ -57,14 +63,29 @@ export const createUser = async (req, res) => {
 // @access  Private/Admin
 export const updateUser = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid user ID format' });
+    }
+
     const user = await User.findById(req.params.id);
 
     if (user) {
-      user.name = req.body.name || user.name;
-      user.email = req.body.email || user.email;
+      if (req.body.email) {
+        const cleanEmail = req.body.email.trim().toLowerCase();
+        if (cleanEmail !== user.email) {
+          const emailExists = await User.findOne({ email: cleanEmail, _id: { $ne: user._id } });
+          if (emailExists) {
+            return res.status(400).json({ message: 'Email is already in use by another user' });
+          }
+          user.email = cleanEmail;
+        }
+      }
+
+      user.name = req.body.name ? req.body.name.trim() : user.name;
       user.role = req.body.role || user.role;
+      user.status = req.body.status || user.status || 'Active';
       
-      if (req.body.password) {
+      if (req.body.password && req.body.password.trim() !== '') {
         user.password = req.body.password;
       }
 
@@ -74,7 +95,7 @@ export const updateUser = async (req, res) => {
         name: updatedUser.name,
         email: updatedUser.email,
         role: updatedUser.role,
-        status: 'Active'
+        status: updatedUser.status || 'Active'
       });
     } else {
       res.status(404).json({ message: 'User not found' });
@@ -89,6 +110,10 @@ export const updateUser = async (req, res) => {
 // @access  Private/Admin
 export const deleteUser = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid user ID format' });
+    }
+
     const user = await User.findById(req.params.id);
 
     if (user) {
